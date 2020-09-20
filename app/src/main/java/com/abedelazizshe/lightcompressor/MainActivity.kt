@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var path: String
+    private val USE_VIDEO_PICKER = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,12 +59,29 @@ class MainActivity : AppCompatActivity() {
 
     //Pick a video file from device
     private fun pickVideo() {
-        val intent = Intent()
-        intent.apply {
-            type = "video/*"
-            action = Intent.ACTION_PICK
+        return if (USE_VIDEO_PICKER) {
+            val intent = Intent()
+            intent.apply {
+                type = "video/*"
+                action = Intent.ACTION_PICK
+            }
+            startActivityForResult(Intent.createChooser(intent, "Select video"), REQUEST_SELECT_VIDEO)
+        } else {
+            /**
+             * Alternate picker method that produces content://document.provider.. uris
+             */
+            val intent = Intent(Intent.ACTION_GET_CONTENT)
+            intent.addCategory(Intent.CATEGORY_OPENABLE)
+            intent.apply {
+                type = "*/*"
+            }
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("video/*"))
+            startActivityForResult(
+                Intent.createChooser(intent, "Select video"),
+                REQUEST_SELECT_VIDEO,
+                Bundle.EMPTY
+            )
         }
-        startActivityForResult(Intent.createChooser(intent, "Select video"), REQUEST_SELECT_VIDEO)
     }
 
     @SuppressLint("SetTextI18n")
@@ -86,11 +104,17 @@ class MainActivity : AppCompatActivity() {
                             // run in background as it can take a long time if the video is big,
                             // this implementation is not the best way to do it,
                             // todo(abed): improve threading
-                            val job = async { getMediaPath(applicationContext, uri) }
-                            path = job.await()
+                            path = if (USE_VIDEO_PICKER) {
+                                val job = async { getMediaPath(applicationContext, uri) }
+                                job.await()
+                            } else {
+                                uri.toString()
+                            }
 
-                            val desFile = saveVideoFile(path)
-
+                            val desFile = if (USE_VIDEO_PICKER) saveVideoFile(path) else {
+                                File.createTempFile("encoded", ".mp4", Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES))
+                            }
+                            desFile?.deleteOnExit()
                             desFile?.let {
                                 var time = 0L
                                 VideoCompressor.start(
@@ -108,10 +132,13 @@ class MainActivity : AppCompatActivity() {
 
                                         override fun onStart() {
                                             time = System.currentTimeMillis()
+                                            val originalLength = if (USE_VIDEO_PICKER) File(path).length() else {
+                                                applicationContext.contentResolver.openFileDescriptor(uri, "r")?.statSize ?: 0
+                                            }
                                             progress.visibility = View.VISIBLE
                                             progressBar.visibility = View.VISIBLE
                                             originalSize.text =
-                                                "Original size: ${getFileSize(File(path).length())}"
+                                                "Original size: ${getFileSize(originalLength)}"
                                             progress.text = ""
                                             progressBar.progress = 0
                                         }
@@ -149,6 +176,7 @@ class MainActivity : AppCompatActivity() {
                                     VideoQuality.MEDIUM,
                                     isMinBitRateEnabled = true,
                                     keepOriginalResolution = false,
+                                    context = if (!USE_VIDEO_PICKER) applicationContext else null
                                 )
                             }
                         }

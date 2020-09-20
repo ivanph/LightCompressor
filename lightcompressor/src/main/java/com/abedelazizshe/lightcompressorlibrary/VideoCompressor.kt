@@ -1,5 +1,6 @@
 package com.abedelazizshe.lightcompressorlibrary
 
+import android.content.Context
 import com.abedelazizshe.lightcompressorlibrary.Compressor.compressVideo
 import com.abedelazizshe.lightcompressorlibrary.Compressor.isRunning
 import kotlinx.coroutines.*
@@ -16,7 +17,8 @@ object VideoCompressor : CoroutineScope by MainScope() {
      * This function compresses a given [srcPath] video file and writes the compressed video file at
      * [destPath]
      *
-     * @param [srcPath] the path of the provided video file to be compressed
+     * @param [srcPath] the path (or uri from a [ContentProvider][android.content.ContentProvider])
+     * of the provided video file to be compressed
      * @param [destPath] the path where the output compressed video file should be saved
      * @param [listener] a compression listener that listens to compression [CompressionListener.onStart],
      * [CompressionListener.onProgress], [CompressionListener.onFailure], [CompressionListener.onSuccess]
@@ -28,6 +30,10 @@ object VideoCompressor : CoroutineScope by MainScope() {
      * before compression is enabled or not. This default to `true`
      * @param [keepOriginalResolution] to keep the original video height and width when compressing.
      * This defaults to `false`
+     * @param [context] The application context, when passed the VideoCompressor will try to resolve
+     * the [srcPath] using the
+     * [ContentResolver.openFileDescriptor][android.content.ContentResolver.openFileDescriptor].
+     * Defaults to null.
      */
     @JvmStatic
     @JvmOverloads
@@ -38,6 +44,7 @@ object VideoCompressor : CoroutineScope by MainScope() {
         quality: VideoQuality = VideoQuality.MEDIUM,
         isMinBitRateEnabled: Boolean = true,
         keepOriginalResolution: Boolean = false,
+        context: Context? = null
     ) {
         job = doVideoCompression(
             srcPath,
@@ -46,6 +53,7 @@ object VideoCompressor : CoroutineScope by MainScope() {
             isMinBitRateEnabled,
             keepOriginalResolution,
             listener,
+            context
         )
     }
 
@@ -65,6 +73,7 @@ object VideoCompressor : CoroutineScope by MainScope() {
         isMinBitRateEnabled: Boolean,
         keepOriginalResolution: Boolean,
         listener: CompressionListener,
+        context: Context?,
     ) = launch {
         isRunning = true
         listener.onStart()
@@ -75,6 +84,7 @@ object VideoCompressor : CoroutineScope by MainScope() {
             isMinBitRateEnabled,
             keepOriginalResolution,
             listener,
+            context
         )
 
         // Runs in Main(UI) Thread
@@ -93,6 +103,7 @@ object VideoCompressor : CoroutineScope by MainScope() {
         isMinBitRateEnabled: Boolean,
         keepOriginalResolution: Boolean,
         listener: CompressionListener,
+        context: Context?
     ): Result = withContext(Dispatchers.IO) {
         return@withContext compressVideo(
             srcPath,
@@ -109,6 +120,7 @@ object VideoCompressor : CoroutineScope by MainScope() {
                     listener.onCancelled()
                 }
             },
+            context
         )
     }
 }

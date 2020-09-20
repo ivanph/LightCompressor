@@ -1,6 +1,8 @@
 package com.abedelazizshe.lightcompressorlibrary
 
+import android.content.Context
 import android.media.*
+import android.net.Uri
 import android.util.Log
 import java.io.File
 import java.nio.ByteBuffer
@@ -35,17 +37,40 @@ object Compressor {
         isMinBitRateEnabled: Boolean,
         keepOriginalResolution: Boolean,
         listener: CompressionProgressListener,
+        context: Context?
     ): Result {
 
         //Retrieve the source's metadata to be used as input to generate new values for compression
         val mediaMetadataRetriever = MediaMetadataRetriever()
         try {
-            mediaMetadataRetriever.setDataSource(source)
+            if (context != null) {
+                mediaMetadataRetriever.setDataSource(context, Uri.parse(source))
+            } else {
+                mediaMetadataRetriever.setDataSource(source)
+            }
         } catch (exception: IllegalArgumentException) {
             return Result(
                 success = false,
                 failureMessage = "Source path: $source can be invalid! or you don't have READ_EXTERNAL_STORAGE permission"
             )
+        }
+
+        // MediaExtractor extracts encoded media data from the source
+        val extractor = MediaExtractor()
+        if (context == null) {
+            val file = File(source)
+            if (!file.canRead()) return Result(
+                success = false,
+                failureMessage = "The source file cannot be accessed!"
+            )
+            extractor.setDataSource(file.toString())
+        } else {
+            val fileDescriptor = context.contentResolver.openFileDescriptor(Uri.parse(source), "r")?.fileDescriptor
+                ?: return Result(
+                    success = false,
+                    failureMessage = "The source file cannot be accessed!"
+                )
+            extractor.setDataSource(fileDescriptor)
         }
 
         val heightData =
@@ -114,12 +139,6 @@ object Compressor {
             else -> rotation
         }
 
-        val file = File(source)
-        if (!file.canRead()) return Result(
-            success = false,
-            failureMessage = "The source file cannot be accessed!"
-        )
-
         var noExceptions = true
 
         if (newWidth != 0 && newHeight != 0) {
@@ -136,9 +155,7 @@ object Compressor {
 
                 // MediaMuxer outputs MP4 in this app
                 val mediaMuxer = MP4Builder().createMovie(movie)
-                // MediaExtractor extracts encoded media data from the source
-                val extractor = MediaExtractor()
-                extractor.setDataSource(file.toString())
+
 
                 // Start with video track
                 val videoIndex = selectTrack(extractor, isVideo = true)
